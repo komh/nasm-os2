@@ -1574,6 +1574,9 @@ static int32_t obj_segment(char *name, int *bits)
             }
         }
 
+        if (!seg->use32 && seg->grp && !strcmp(seg->grp->name, "FLAT"))
+            nasm_panic("wrong combination of USE16(16-bit segment) and FLAT");
+
         if (ofmt == &of_obj2) {
             if (seg->use32 && !seg->grp) {
                 struct Group *grp;
