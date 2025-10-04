@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2022 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * Parse and handle assembler directives
@@ -111,6 +81,7 @@ void set_cpu(const char *value)
         { "any", IF_ANY },
         { "all", IF_ANY },
         { "latevex", IF_LATEVEX },
+        { "apx", IF_APX },
         { "evex", IF_EVEX },
         { "vex", IF_VEX },
         { NULL, 0 }
@@ -257,6 +228,26 @@ static enum directive parse_directive_line(char **directive, char **value)
 }
 
 /*
+ * Check to see if a string matches a valid directive name (sans [],
+ * whitespace must be already trimmed.)
+ */
+bool directive_valid(const char *directive)
+{
+    enum directive d;
+
+    d = directive_find(directive);
+
+    if (d <= D_corrupt)
+        return false;
+    else if (d < D_ofmt)
+        return true;            /* Global directive or pseudo-op */
+    else if (d < D_pragma_tokens)
+        return ofmt->directive(d, NULL) == DIRR_OK;
+    else
+        return false;
+}
+
+/*
  * Process a line from the assembler and try to handle it if it
  * is a directive.  Return true if the line was handled (including
  * if it was an error), false otherwise.
@@ -279,18 +270,21 @@ bool process_directives(char *directive)
 	nasm_nonfatal("invalid directive line");
 	break;
 
-    default:			/* It's a backend-specific directive */
-        switch (ofmt->directive(d, value)) {
-        case DIRR_UNKNOWN:
-            goto unknown;
-        case DIRR_OK:
-        case DIRR_ERROR:
-            break;
-        case DIRR_BADPARAM:
-            bad_param = true;
-            break;
-        default:
-            panic();
+    default:
+        if (d > D_ofmt && d < D_pragma_tokens) {
+            /* It's a backend-specific directive */
+            switch (ofmt->directive(d, value)) {
+            case DIRR_UNKNOWN:
+                goto unknown;
+            case DIRR_OK:
+            case DIRR_ERROR:
+                break;
+            case DIRR_BADPARAM:
+                bad_param = true;
+                break;
+            default:
+                panic();
+            }
         }
         break;
 
@@ -302,13 +296,13 @@ bool process_directives(char *directive)
     case D_SEGMENT:         /* [SEGMENT n] */
     case D_SECTION:
     {
-	int sb = globalbits;
+	int sb = globl.bits;
         int32_t seg = ofmt->section(value, &sb);
 
         if (seg == NO_SEG) {
             nasm_nonfatal("segment name `%s' not recognized", value);
         } else {
-            globalbits = sb;
+            globl.bits = sb;
             switch_segment(seg);
         }
         break;
@@ -319,8 +313,7 @@ bool process_directives(char *directive)
 	expr *e;
 
         if (*value) {
-            stdscan_reset();
-            stdscan_set(value);
+            stdscan_reset(value);
             tokval.t_type = TOKEN_INVALID;
             e = evaluate(stdscan, NULL, &tokval, NULL, true, NULL);
             if (e) {
@@ -348,7 +341,7 @@ bool process_directives(char *directive)
     }
 
     case D_BITS:            /* [BITS bits] */
-        globalbits = get_bits(value);
+        globl.bits = get_bits(value);
         break;
 
     case D_GLOBAL:          /* [GLOBAL|STATIC|EXTERN|COMMON symbol:special] */
@@ -369,18 +362,22 @@ bool process_directives(char *directive)
 
     symdef:
     {
-        bool validid = true;
+        bool validid;
         int64_t size = 0;
         char *sizestr;
         bool rn_error;
 
-        if (*value == '$')
-            value++;        /* skip initial $ if present */
+        if (*value == '$') {
+            value++;        /* skip escaping $ if present */
+            validid = nasm_isidchar(*value);
+            if (globl.dollarhex)
+                validid &= !nasm_isnumchar(*value);
+        } else {
+            validid = nasm_isidstart(*value);
+        }
 
         q = value;
-        if (!nasm_isidstart(*q)) {
-            validid = false;
-        } else {
+        if (validid) {
             q++;
             while (*q && *q != ':' && !nasm_isspace(*q)) {
                 if (!nasm_isidchar(*q))
@@ -432,8 +429,7 @@ bool process_directives(char *directive)
     {
 	expr *e;
 
-        stdscan_reset();
-        stdscan_set(value);
+        stdscan_reset(value);
         tokval.t_type = TOKEN_INVALID;
         e = evaluate(stdscan, NULL, &tokval, NULL, true, NULL);
         if (e) {
@@ -463,9 +459,17 @@ bool process_directives(char *directive)
         p = value;
         q = debugid;
         badid = overlong = false;
-        if (!nasm_isidstart(*p)) {
-            badid = true;
+        if (*p == '$') {
+            /* Skip $ used to escape an identifier */
+            p++;
+            badid = !nasm_isidchar(*p);
+            if (globl.dollarhex)
+                badid |= nasm_isnumchar(*p);
         } else {
+            badid = !nasm_isidstart(*p);
+        }
+
+        if (!badid) {
             while (*p && !nasm_isspace(*p)) {
                 if (q >= debugid + sizeof debugid - 1) {
                     overlong = true;
@@ -512,7 +516,7 @@ bool process_directives(char *directive)
             user_nolist = false;
         } else {
             if (*value == '-') {
-                user_nolist = true;
+                user_nolist = !list_option('F');
             } else {
                 bad_param = true;
             }
@@ -520,36 +524,80 @@ bool process_directives(char *directive)
         break;
 
     case D_DEFAULT:         /* [DEFAULT] */
-        stdscan_reset();
-        stdscan_set(value);
+    {
+        enum ea_flags relabs_applies = EAF_NOTFSGS;
+        bool eat_colon = false;
+
+        stdscan_reset(value);
         tokval.t_type = TOKEN_INVALID;
-        if (stdscan(NULL, &tokval) != TOKEN_INVALID) {
-            switch (tokval.t_integer) {
-            case S_REL:
-                globalrel = 1;
+        while (!bad_param) {
+            enum token_type type = stdscan(NULL, &tokval);
+            if (type <= 0)
                 break;
-            case S_ABS:
-                globalrel = 0;
+
+            switch (tokval.t_type) {
+            case TOKEN_REG:
+            case TOKEN_SPECIAL:
+            case TOKEN_PREFIX:
+                switch (tokval.t_integer) {
+                case R_FS:
+                    relabs_applies = EAF_FS;
+                    eat_colon = true;
+                    goto next_token;
+                case R_GS:
+                    relabs_applies = EAF_GS;
+                    eat_colon = true;
+                    goto next_token;
+                case S_REL:
+                    globl.rel    |= relabs_applies;
+                    globl.reldef |= relabs_applies;
+                    break;
+                case S_ABS:
+                    globl.rel    &= ~relabs_applies;
+                    globl.reldef |= relabs_applies;
+                    break;
+                case P_BND:
+                    globl.bnd = 1;
+                    break;
+                case P_NOBND:
+                    globl.bnd = 0;
+                    break;
+                default:
+                    bad_param = true;
+                    break;
+                }
                 break;
-            case P_BND:
-                globalbnd = 1;
+
+            case ',':
                 break;
-            case P_NOBND:
-                globalbnd = 0;
-                break;
+
+            case ':':
+                if (eat_colon) {
+                    eat_colon = false;
+                    goto next_token;
+                }
+            /* else fall through */
             default:
                 bad_param = true;
                 break;
             }
-        } else {
-            bad_param = true;
+
+            eat_colon = false;
+            relabs_applies = EAF_NOTFSGS;
+        next_token:
+            ;
         }
         break;
+    }
 
     case D_FLOAT:
         if (float_option(value)) {
             nasm_nonfatal("unknown 'float' directive: %s", value);
         }
+        break;
+
+    case D_DOLLARHEX:
+        get_boolean_option(value, &globl.dollarhex);
         break;
 
     case D_PRAGMA:

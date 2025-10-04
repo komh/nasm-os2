@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2020 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2020 The NASM Authors - All Rights Reserved */
 
 /*
  * float.c     floating-point constant support for the Netwide Assembler
@@ -400,13 +370,13 @@ static bool ieee_flconvert(const char *string, fp_limb *mant,
  */
 
 /* Set a bit, using *bigendian* bit numbering (0 = MSB) */
-static void set_bit(fp_limb *mant, int bit)
+static void set_bit(fp_limb *mant, size_t bit)
 {
-    mant[bit/LIMB_BITS] |= LIMB_TOP_BIT >> (bit & (LIMB_BITS-1));
+    mant[bit/LIMB_BITS] |= (fp_limb)1 << (~bit & (LIMB_BITS-1));
 }
 
 /* Test a single bit */
-static int test_bit(const fp_limb *mant, int bit)
+static int test_bit(const fp_limb *mant, size_t bit)
 {
     return (mant[bit/LIMB_BITS] >> (~bit & (LIMB_BITS-1))) & 1;
 }
@@ -495,17 +465,6 @@ static bool ieee_round(bool minus, fp_limb *mant, int bits)
     return false;
 }
 
-/* Returns a value >= 16 if not a valid hex digit */
-static unsigned int hexval(char c)
-{
-    unsigned int v = (unsigned char) c;
-
-    if (v >= '0' && v <= '9')
-        return v - '0';
-    else
-        return (v|0x20) - 'a' + 10;
-}
-
 /* Handle floating-point numbers with radix 2^bits and binary exponent */
 static bool ieee_flconvert_bin(const char *string, int bits,
                                fp_limb *mant, int32_t *exponent)
@@ -535,7 +494,7 @@ static bool ieee_flconvert_bin(const char *string, int bits,
                 nasm_nonfatal("too many periods in floating-point constant");
                 return false;
             }
-        } else if ((v = hexval(c)) < (unsigned int)radix) {
+        } else if ((v = nasm_hexval(c)) < (unsigned int)radix) {
             if (!seendigit && v) {
                 int l = log2tbl[v];
 

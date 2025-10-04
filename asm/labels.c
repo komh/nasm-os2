@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2018 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * labels.c  label handling for the Netwide Assembler
@@ -391,8 +361,16 @@ static bool declare_label_lptr(union label *lptr,
     if (special && !special[0])
         special = NULL;
 
-    if (oldtype == type || (!pass_stable() && oldtype == LBL_LOCAL) ||
-        (oldtype == LBL_EXTERN && type == LBL_REQUIRED)) {
+    if (!pass_stable() && oldtype == LBL_LOCAL) {
+        if (is_extern(type) && lptr->defn.defined)
+            oldtype = LBL_GLOBAL; /* Already defined, promote to global */
+        else
+            oldtype = type;
+
+        lptr->defn.type = oldtype;
+    }
+
+    if (oldtype == type || (oldtype == LBL_EXTERN && type == LBL_REQUIRED)) {
         lptr->defn.type = type;
 
         if (special) {
@@ -443,7 +421,7 @@ void define_label(const char *label, int32_t segment,
                   int64_t offset, bool normal)
 {
     union label *lptr;
-    bool created, changed;
+    bool created, changed, largechange;
     int64_t size;
     int64_t lpass, lastdef;
 
@@ -498,10 +476,11 @@ void define_label(const char *label, int32_t segment,
         size = 0;               /* This is a hack... */
     }
 
-    changed = created || !lastdef ||
+    /* A "large change" is one which is not the offset */
+    largechange = created || !lastdef ||
         lptr->defn.segment != segment ||
-        lptr->defn.offset != offset ||
         lptr->defn.size != size;
+    changed = largechange || (lptr->defn.offset != offset);
     global_offset_changed += changed;
 
     if (lastdef == lpass) {
@@ -548,9 +527,16 @@ void define_label(const char *label, int32_t segment,
          * Note: As a special case, LBL_SPECIAL symbols are allowed
          * to be changed even during the last pass.
          */
-        nasm_warn(WARN_LABEL_REDEF_LATE|ERR_UNDEAD,
-                   "label `%s' %s during code generation",
+        if (!largechange) {
+            nasm_warn(WARN_LABEL_REDEF_LATE,
+                      "label `%s' changed during code generation"
+                      " (offset 0x%"PRIx64" -> 0x%"PRIx64")",
+                      lptr->defn.label, lptr->defn.offset, offset);
+        } else {
+            nasm_warn(WARN_LABEL_REDEF_LATE|ERR_UNDEAD,
+                      "label `%s' %s during code generation",
                    lptr->defn.label, created ? "defined" : "changed");
+        }
     }
     lptr->defn.segment = segment;
     lptr->defn.offset  = offset;
