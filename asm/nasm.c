@@ -1622,10 +1622,8 @@ static void assemble_file(const char *fname, struct strlist *depend_list)
          * pass 2 (everything will be emitted immediately in pass 2.)
 	 */
 	if (warn_list) {
-            if (warn_list->nstr || pass_final()) {
-                strlist_write(warn_list, "\n", error_file);
+            if (warn_list->nstr || pass_final())
                 strlist_free(&warn_list);
-            }
         }
 
 	if (!pass_final() && !warn_list)
