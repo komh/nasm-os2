@@ -23,6 +23,7 @@ LDEBUG      =
 LDFLAGS     = op q $(%TARGET_LFLAGS) $(LDEBUG)
 LIBS        =
 STRIP       = wstrip
+RUNMAKE     = $(MAKE) -f Mkfiles\openwcom.mak
 
 PERL		= perl
 PERLFLAGS	= -I$(srcdir)\perllib -I$(srcdir)
@@ -213,8 +214,8 @@ ndisasm.lib: $(LIBOBJ_DIS)
 
 # These are specific to certain Makefile syntaxes (what are they
 # actually supposed to look like for wmake?)
-WARNTIMES = $(WARNFILES:=.time)
-WARNSRCS  = $(LIBOBJ_NW:.obj=.c)
+WARNTIMES = $(WARNFILES: =.time ).time
+WARNSRCS  = $(ALLOBJ_W:.obj=.c)
 
 #-- Begin Generated File Rules --#
 # Edit in Makefile.in, not here!
@@ -312,28 +313,31 @@ x86\regs.h: x86\regs.dat x86\regs.pl
 # dependency by the empty file asm\warnings.time.
 warnings: dirs .SYMBOLIC
 	$(RM_F) $(WARNFILES) $(WARNTIMES) asm\warnings.time
-	$(MAKE) asm\warnings.time
+	$(RUNMAKE) asm\warnings.time
 
 asm\warnings.time: $(WARNSRCS) asm\warnings.pl
 	$(EMPTY) asm\warnings.time
-	$(MAKE) $(WARNTIMES)
+	$(RUNMAKE) $(WARNTIMES)
 
 asm\warnings_c.h.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl c asm\warnings_c.h $(srcdir)
+	$(RUNPERL) $(srcdir)\asm\warnings.pl c asm\warnings_c.h $(srcdir) &
+		$(WARNSRCS)
 	$(EMPTY) asm\warnings_c.h.time
 
 asm\warnings_c.h: asm\warnings_c.h.time
 	%null Side effect
 
 include\warnings.h.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl h include\warnings.h $(srcdir)
+	$(RUNPERL) $(srcdir)\asm\warnings.pl h include\warnings.h $(srcdir) &
+		$(WARNSRCS)
 	$(EMPTY) include\warnings.h.time
 
 include\warnings.h: include\warnings.h.time
 	%null Side effect
 
 doc\warnings.src.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl doc doc\warnings.src $(srcdir)
+	$(RUNPERL) $(srcdir)\asm\warnings.pl doc doc\warnings.src $(srcdir) &
+		$(WARNSRCS)
 	$(EMPTY) doc\warnings.src.time
 
 doc\warnings.src : doc\warnings.src.time
