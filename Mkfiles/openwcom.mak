@@ -74,7 +74,7 @@ NDISASM = disasm\ndisasm.obj
 PROGOBJ = $(NASM) $(NDISASM)
 PROGS   = nasm$(X) ndisasm$(X)
 
-# Files dependent on extracted warnings
+# Files dependent on warnings.dat
 WARNOBJ   = asm\warnings.obj
 WARNFILES = asm\warnings_c.h include\warnings.h doc\warnings.src
 
@@ -224,8 +224,8 @@ ndisasm.lib: $(LIBOBJ_DIS)
 
 # These are specific to certain Makefile syntaxes (what are they
 # actually supposed to look like for wmake?)
-WARNTIMES = $(WARNFILES: =.time ).time
-WARNSRCS  = $(ALLOBJ_W:.obj=.c)
+WARNTIMES = $(WARNFILES:=.time)
+WARNSRCS  = $(LIBOBJ_NW:.obj=.c)
 
 #-- Begin Generated File Rules --#
 # Edit in Makefile.in, not here!
@@ -316,42 +316,6 @@ x86\regs.h: x86\regs.dat x86\regs.pl
 	$(RUNPERL) $(srcdir)\x86\regs.pl h &
 		$(srcdir)\x86\regs.dat > x86\regs.h
 
-# Extract warnings from source code. This is done automatically if any
-# C files have changed; the script is fast enough that that is
-# reasonable, but doesn't update the time stamp if the files aren't
-# changed, to avoid rebuilding everything every time. Track the actual
-# dependency by the empty file asm\warnings.time.
-warnings: dirs .SYMBOLIC
-	$(RM_F) $(WARNFILES) $(WARNTIMES) asm\warnings.time
-	$(RUNMAKE) asm\warnings.time
-
-asm\warnings.time: $(WARNSRCS) asm\warnings.pl
-	$(EMPTY) asm\warnings.time
-	$(RUNMAKE) $(WARNTIMES)
-
-asm\warnings_c.h.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl c asm\warnings_c.h $(srcdir) &
-		$(WARNSRCS)
-	$(EMPTY) asm\warnings_c.h.time
-
-asm\warnings_c.h: asm\warnings_c.h.time
-	%null Side effect
-
-include\warnings.h.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl h include\warnings.h $(srcdir) &
-		$(WARNSRCS)
-	$(EMPTY) include\warnings.h.time
-
-include\warnings.h: include\warnings.h.time
-	%null Side effect
-
-doc\warnings.src.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl doc doc\warnings.src $(srcdir) &
-		$(WARNSRCS)
-	$(EMPTY) doc\warnings.src.time
-
-doc\warnings.src : doc\warnings.src.time
-	%null Side effect
 
 # Assembler token hash
 asm\tokhash.c: x86\insns.xda x86\insnsn.c asm\tokens.dat asm\tokhash.pl &
@@ -400,7 +364,25 @@ editors\nasmtok.json: editors\nasmtok.pl asm\tokhash.c asm\pptok.c &
 		 version.mak
 	$(RUNPERL) $(srcdir)\editors\nasmtok.pl -json $@ $(srcdir) $(objdir)
 
-editors: $(EDITORS)
+editors: $(EDITORS) $(PHONY)
+
+asm\warnings_c.h: asm\warnings.pl asm\warnings.dat
+	$(RUNPERL) $(srcdir)\asm\warnings.pl c asm\warnings_c.h &
+		$(srcdir)\asm\warnings.dat
+
+include\warnings.h: asm\warnings.pl asm\warnings.dat
+	$(RUNPERL) $(srcdir)\asm\warnings.pl h include\warnings.h &
+		$(srcdir)\asm\warnings.dat
+
+doc\warnings.src: asm\warnings.pl asm\warnings.dat
+	$(RUNPERL) $(srcdir)\asm\warnings.pl doc doc\warnings.src &
+		$(srcdir)\asm\warnings.dat
+
+$(PERLREQ): $(DIRS)
+
+perlreq: $(PERLREQ) $(PHONY)
+
+warnings: $(WARNFILES) $(PHONY)
 
 #-- End Generated File Rules --#
 

@@ -10,13 +10,43 @@ evolving code simpler.
 
 It is the production version of NASM since 2025.
 
+
 \S{cl-3.01} Version 3.01
 
-Put the updates for NASM 3.01 here...
+\b A new \c{obj2} version of the \c{obj} output format, intended for
+   use on OS/2. See \k{obj2fmt}.
 
-\S{cl-3.00.01} Version 3.00.01
+\b The condition after \c{%if} or \c{%elif} would be evaluated while
+   output is suppressed after \c{%exitrep} or \c{%exitmacro}. Although
+   no output would be generated in either case, assembly would fail if
+   evaluating the expression triggered an error.
 
-Put the updates for NASM 3.00.01 here...
+\b Fix encoding of \c{TCVTROWPS2PHL}, correct multiple AVX512-BF16
+   instructions' operand formats and typoed mnemonics.
+
+\b The unofficial but obvious alternate form \c{TEST reg,mem} was not
+   accepted by NASM 3.00; corrected.
+
+\b For the \c{obj} output format, multiple \c{GROUP} directives can
+   now be specified for the same group; the resulting group includes
+   all sections specified in all \c{GROUP} directives for the group.
+
+\b A new \c{%selbits()} preprocessor function.  See \k{f_selbits}.
+
+\b A new \c{--bits} option as convenience shorthand for \c{--before
+   "BITS ..."}.  See \k{opt-bits}.
+
+\b The options and pragmas for configuring external label mangling
+   were inconsistent, the former using the spelling \c{postfix} and
+   the latter \c{suffix}. Furthermore, these were also documented as
+   \e{directives} in addition to pragmas. Implement the already
+   documented directives (bracketed forms only) and allow both
+   \c{postfix} and \c{suffix} in all cases.
+
+   See \k{opt-pfix} and \k{mangling}.
+
+\b Define additional permissive patterns and fix some opcode bugs.
+
 
 \S{cl-3.00} Version 3.00
 

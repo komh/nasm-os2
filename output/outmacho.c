@@ -452,7 +452,7 @@ static int64_t add_reloc(struct section *sect, int32_t section,
 
     case RL_SUB: /* obsolete */
 	nasm_warn(WARN_OTHER, "relcation with subtraction"
-		   "becomes to be obsolete");
+		   " becomes to be obsolete");
 	r->ext = 0;
 	r->type = X86_64_RELOC_SUBTRACTOR;
 	break;
@@ -563,7 +563,7 @@ static void macho_output(const struct out_data *out)
               "BSS section: ignored");
         /* FIXME */
         nasm_warn(WARN_OTHER, "section size may be negative"
-            "with address symbols");
+            " with address symbols");
         s->size += realsize(type, size);
         return;
     }
@@ -1106,7 +1106,7 @@ extern macros_t macho_stdmac[];
 static int layout_compare (const struct symbol **s1,
 			   const struct symbol **s2)
 {
-    return (strcmp ((*s1)->name, (*s2)->name));
+    return strcmp ((*s1)->name, (*s2)->name);
 }
 
 /* The native assembler does a few things in a similar function

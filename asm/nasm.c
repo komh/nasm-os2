@@ -912,7 +912,8 @@ enum text_options {
     OPT_NO_LINE,
     OPT_DEBUG,
     OPT_INFO,
-    OPT_REPRODUCIBLE
+    OPT_REPRODUCIBLE,
+    OPT_BITS
 };
 enum need_arg {
     ARG_NO,
@@ -931,12 +932,15 @@ static const struct textargs textopts[] = {
     {"version", OPT_VERSION, ARG_NO, 0},
     {"help",     OPT_HELP,  ARG_MAYBE, 0},
     {"abort-on-panic", OPT_ABORT_ON_PANIC, ARG_NO, 0},
-    {"prefix",   OPT_MANGLE, ARG_YES, LM_GPREFIX},
-    {"postfix",  OPT_MANGLE, ARG_YES, LM_GSUFFIX},
-    {"gprefix",  OPT_MANGLE, ARG_YES, LM_GPREFIX},
-    {"gpostfix", OPT_MANGLE, ARG_YES, LM_GSUFFIX},
-    {"lprefix",  OPT_MANGLE, ARG_YES, LM_LPREFIX},
-    {"lpostfix", OPT_MANGLE, ARG_YES, LM_LSUFFIX},
+    {"prefix",   OPT_MANGLE, ARG_YES, D_PREFIX},
+    {"postfix",  OPT_MANGLE, ARG_YES, D_POSTFIX},
+    {"suffix",   OPT_MANGLE, ARG_YES, D_SUFFIX},
+    {"gprefix",  OPT_MANGLE, ARG_YES, D_GPREFIX},
+    {"gpostfix", OPT_MANGLE, ARG_YES, D_GPOSTFIX},
+    {"gsuffix",  OPT_MANGLE, ARG_YES, D_GSUFFIX},
+    {"lprefix",  OPT_MANGLE, ARG_YES, D_LPREFIX},
+    {"lpostfix", OPT_MANGLE, ARG_YES, D_LPOSTFIX},
+    {"lsuffix",  OPT_MANGLE, ARG_YES, D_LSUFFIX},
     {"include",  OPT_INCLUDE, ARG_YES, 0},
     {"pragma",   OPT_PRAGMA,  ARG_YES, 0},
     {"before",   OPT_BEFORE,  ARG_YES, 0},
@@ -947,6 +951,7 @@ static const struct textargs textopts[] = {
     {"verbose",  OPT_INFO , ARG_MAYBE, 0},
     {"debug",    OPT_DEBUG, ARG_MAYBE, 0},
     {"reproducible", OPT_REPRODUCIBLE, ARG_NO, 0},
+    {"bits",     OPT_BITS, ARG_YES, 0},
     {NULL, OPT_BOGUS, ARG_NO, 0}
 };
 
@@ -1300,6 +1305,10 @@ static bool process_arg(char *p, char *q, int pass)
                 case OPT_PRAGMA:
                     if (pass == 2)
                         pp_pre_command("%pragma", param);
+                    break;
+                case OPT_BITS:
+                    if (pass == 2)
+                        pp_pre_command("BITS", param);
                     break;
                 case OPT_BEFORE:
                     if (pass == 2)
@@ -1730,12 +1739,6 @@ static void assemble_file(const char *fname, struct strlist *depend_list)
                 break;
 
             case PASS_STAB:
-                /*!
-                 *!phase [off] phase error during stabilization
-                 *!  warns about symbols having changed values during
-                 *!  the second-to-last assembly pass. This is not
-                 *!  inherently fatal, but may be a source of bugs.
-                 */
                 nasm_warn(WARN_PHASE|ERR_UNDEAD,
                           "phase error during stabilization "
                           "pass, hoping for the best");
@@ -2475,11 +2478,12 @@ static void help(FILE *out, const char *what)
         fputs(
             "    --pragma str   pre-executes a specific %pragma\n"
             "    --before str   add line (usually a preprocessor statement) before the input\n"
+            "    --bits nn      set bits to nn (equivalent to --before \"BITS nn\")\n"
             "    --no-line      ignore %line directives in input\n"
-            "    --prefix str   prepend the given string to the names of all extern,\n"
-            "                   common and global symbols (also --gprefix)\n"
-            "    --suffix str   append the given string to the names of all extern,\n"
-            "                   common and global symbols (also --gprefix)\n"
+            "    --gprefix str  prepend the given string to the names of all extern,\n"
+            "                   common and global symbols (also --prefix)\n"
+            "    --gpostfix str append the given string to the names of all extern,\n"
+            "                   common and global symbols (also --postfix)\n"
             "    --lprefix str  prepend the given string to local symbols\n"
             "    --lpostfix str append the given string to local symbols\n"
             "    --reproducible attempt to produce run-to-run identical output\n"

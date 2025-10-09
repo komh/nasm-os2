@@ -327,6 +327,10 @@ A group does not have to contain any segments; you can still make
 you are referring to. OS/2, for example, defines the special group
 \c{FLAT} with no segments in it.
 
+\c{GROUP} is cumulative. The above example can be done like this:
+
+\c group dgroup data
+\c group dgroup bss
 
 \S{uppercase} \i\c{UPPERCASE}: Disabling Case Sensitivity in Output
 
@@ -511,7 +515,7 @@ information.  To suppress the generation of dependencies, use
 \c %pragma obj nodepend
 
 
-\H{objfmt} \i\c{obj2}: \i{OS/2 32-bit OMF}\I{OMF} Object Files
+\H{obj2fmt} \i\c{obj2}: \i{OS/2 32-bit OMF}\I{OMF} Object Files
 
 The \c{obj2} output format is the same as \c{obj} except:
 
