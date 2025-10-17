@@ -29,6 +29,10 @@ for cmd in ['run']:
                      dest = 'test',
                      help = 'Run the selected test only',
                      required = False)
+    spp.add_argument('--stop',
+                     dest = 'stop', default = 'y',
+                     help = 'Stop immediately on failure (default "y")',
+                     required = False)
 
 for cmd in ['new']:
     spp = sp.add_parser(cmd, help = 'Add a new test case')
@@ -109,7 +113,7 @@ args = parser.parse_args()
 
 if args.cmd == None:
     parser.print_help()
-    sys.exit(1)
+    sys.exit(64)
 
 def read_stdfile(path):
     with open(path, "rb") as f:
@@ -143,6 +147,7 @@ def expand_templates(desc_array):
             for k, v in own.items():
                 desc_array[i][k] = v
             del desc_array[i]['id']
+        desc_array[i]['_seq'] = '.%d' % (i+1)
     return desc_array
 
 def prepare_desc(desc, basedir, name, path):
@@ -153,7 +158,10 @@ def prepare_desc(desc, basedir, name, path):
     desc['_base-dir'] = basedir
     desc['_json-file'] = name
     desc['_json-path'] = path
-    desc['_test-name'] = basedir + os.sep + name[:-5]
+    if not '_seq' in desc:
+        desc['_seq'] = ''
+    desc['_test-name'] = basedir + os.sep + name[:-5] + desc['_seq']
+
     #
     # If no target provided never update
     if 'target' not in desc:
@@ -232,7 +240,7 @@ if args.cmd == 'list':
 def test_abort(test, message):
     print("\t%s: %s" % (test, message))
     print("=== Test %s ABORT ===" % (test))
-    sys.exit(1)
+    sys.exit(2)
     return False
 
 def test_fail(test, message):
@@ -334,17 +342,16 @@ def prepare_run_opts(desc):
         opts += ['-f', desc['format']]
     if 'option' in desc:
         opts += desc['option'].split(" ")
+    outfile = desc['_test-name'] + '.out'
     for t in desc['target']:
         if 'output' in t:
-            if 'option' in t:
-                opts += t['option'].split(" ") + [desc['_base-dir'] + os.sep + t['output']]
-            else:
-                opts += ['-o', desc['_base-dir'] + os.sep + t['output']]
-        if 'stdout' in t or 'stderr' in t:
-            if 'option' in t:
-                opts += t['option'].split(" ")
+            outfile = desc['_base-dir'] + os.sep + t['output']
+        if 'option' in t:
+            opts += t['option'].split(" ")
+    opts += ['-o', outfile, '-L+', '-l', outfile + '.lst']
     if 'source' in desc:
         opts += [desc['_base-dir'] + os.sep + desc['source']]
+
     return opts
 
 def exec_nasm(desc):
@@ -405,6 +412,12 @@ def test_run(desc):
         return False
 
     for t in desc['target']:
+        f = None
+        if 'filter' in t:
+            f = t['filter']
+            f_pat = re.compile(f['match'], re.M)
+            f_sub = f['subst']
+
         if 'output' in t:
             output = desc['_base-dir'] + os.sep + t['output']
             match = desc['_base-dir'] + os.sep + t['match']
@@ -420,8 +433,11 @@ def test_run(desc):
             match_data = read_stdfile(match)
             if match_data == None:
                 return test_fail(test, "Can't read " + match)
-            if cmp_std(match, match_data, 'stdout', stdout) == False:
-                return test_fail(desc['_test-name'], "Stdout mismatch")
+            out_data = stdout
+            if f:
+                out_data = f_pat.sub(f_sub, out_data, 0)
+            if cmp_std(match, match_data, 'stdout', out_data) == False:
+                return test_fail(desc['_test-name'], "stdout mismatch")
             else:
                 stdout = ""
         elif 'stderr' in t:
@@ -430,18 +446,21 @@ def test_run(desc):
             match_data = read_stdfile(match)
             if match_data == None:
                 return test_fail(test, "Can't read " + match)
-            if cmp_std(match, match_data, 'stderr', stderr) == False:
-                return test_fail(desc['_test-name'], "Stderr mismatch")
+            out_data = stderr
+            if f:
+                out_data = f_pat.sub(f_sub, out_data, 0)
+            if cmp_std(match, match_data, 'stderr', out_data) == False:
+                return test_fail(desc['_test-name'], "stderr mismatch")
             else:
                 stderr = ""
 
     if stdout != "":
         show_std("stdout", stdout)
-        return test_fail(desc['_test-name'], "Stdout is not empty")
+        return test_fail(desc['_test-name'], "stdout is not empty")
 
     if stderr != "":
         show_std("stderr", stderr)
-        return test_fail(desc['_test-name'], "Stderr is not empty")
+        return test_fail(desc['_test-name'], "stderr is not empty")
 
     return test_pass(desc['_test-name'])
 
@@ -542,6 +561,7 @@ if args.cmd == 'new':
         f.close()
 
 if args.cmd == 'run':
+    errors = 0
     desc_array = []
     if args.test == None:
         desc_array = collect_test_desc_from_dir(args.dir)
@@ -552,10 +572,14 @@ if args.cmd == 'run':
 
     for desc in desc_array:
         if test_run(desc) == False:
+            errors = 1;
             if 'error' in desc and desc['error'] == 'over':
                 test_over(desc['_test-name'])
             else:
-                test_abort(desc['_test-name'], "Error detected")
+                errors = 1
+                if args.stop == 'y':
+                    test_abort(desc['_test-name'], "Error detected")
+    sys.exit(errors)
 
 if args.cmd == 'update':
     desc_array = []

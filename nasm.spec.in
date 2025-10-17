@@ -8,11 +8,10 @@ Name: nasm
 Version: @@NASM_MANGLED_VER@@
 Release: 0%{?dist}
 License: BSD-2-Clause
-Source: http://www.nasm.us/pub/nasm/releasebuilds/%{nasm_version}/nasm-%{nasm_version}.tar.xz
-URL: http://www.nasm.us/
+Source: https://www.nasm.us/pub/nasm/releasebuilds/%{nasm_version}/nasm-%{nasm_version}.tar.xz
+URL: https://www.nasm.us/
 BuildRoot: /tmp/rpm-build-nasm
 Prefix: %{_prefix}
-@@PERLBUILDREQS@@
 BuildRequires: autoconf
 BuildRequires: automake
 BuildRequires: asciidoc
@@ -23,6 +22,10 @@ BuildRequires: make
 BuildRequires: gzip
 BuildRequires: xz
 BuildRequires: zlib-devel
+BuildRequires: sed
+BuildRequires: findutils
+BuildRequires: coreutils
+@@PERLBUILDREQS@@
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Obsoletes: %{name}-rdoff < 2.16
 

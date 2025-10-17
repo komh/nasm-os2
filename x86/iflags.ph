@@ -30,7 +30,6 @@ if_("AR2",               "SB, SW, SD applies to operand 2");
 if_("AR3",               "SB, SW, SD applies to operand 3");
 if_("AR4",               "SB, SW, SD applies to operand 4");
 # These must match the order of the BITSx flags in opflags.h
-# Are these obsolete?
 if_("SB",                "Unsized operands can't be non-byte");
 if_("SW",                "Unsized operands can't be non-word");
 if_("SD",                "Unsized operands can't be non-dword");
@@ -41,7 +40,8 @@ if_("SY",                "Unsized operands can't be non-yword");
 if_("SZ",                "Unsized operands can't be non-zword");
 # End BITSx order match requirement
 if_("NWSIZE",            "Operand size defaults to 64 in 64-bit mode");
-if_("OSIZE",             "Unsized operands must match the default operand size");
+# OSIZE can be modified by osp prefixes, but not by other operands
+if_("OSIZE",             "Unsized operands must match the operand size");
 if_("ASIZE",             "Unsized operands must match the address size");
 if_("ANYSIZE",           "Ignore operand size even if explicit");
 if_("SX",                "Unsized operands not allowed");
@@ -146,7 +146,7 @@ if_("AVX512VPOPCNTDQ",   "AVX-512 VPOPCNTD/VPOPCNTQ");
 if_("AVX5124FMAPS",      "AVX-512 4-iteration multiply-add");
 if_("AVX5124VNNIW",      "AVX-512 4-iteration dot product");
 if_("AVX512FP16",        "AVX-512 FP16 instructions");
-if_("AVX512FC16",        "AVX-512 FC16 instructions");
+if_("F16C",              "F16C instructions");
 if_("SGX",               "Intel Software Guard Extensions (SGX)");
 if_("CET",               "Intel Control-Flow Enforcement Technology (CET)");
 if_("ENQCMD",            "Enqueue command instructions");
@@ -156,8 +156,13 @@ if_("AVX512VP2INTERSECT", "AVX-512 VP2INTERSECT instructions");
 if_("AMXTILE",           "AMX tile configuration instructions");
 if_("AMXBF16",           "AMX bfloat16 multiplication");
 if_("AMXFP16",           "AMX FP16 multiplication");
+if_("AMXFP8",            "AMX FP8 instructions");
+if_("AMXTF32",           "AMX TF32 multiplication");
 if_("AMXINT8",           "AMX 8-bit integer multiplication");
 if_("AMXCOMPLEX",        "AMX float16 complex multiplication");
+if_("AMXAVX512",         "EVEX zmm<-tmm conversion instructions");
+if_("AMXMOVRS",          "AMX loads with MOVRS hint");
+if_("AMXTRANSPOSE",      "AMX transpose instructions");
 if_("FRED",              "Flexible Return and Exception Delivery (FRED)");
 if_("RAOINT",		 "Remote atomic operations (RAO-INT)");
 if_("UINTR",		 "User interrupts");

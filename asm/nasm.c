@@ -1579,6 +1579,21 @@ static void forward_refs(insn *instruction)
     }
 }
 
+static void print_pass_report(bool failure)
+{
+    /* This test is here to reduce the likelihood of a recursive failure */
+    if (unlikely(opt_verbose_info >= 1)) {
+        enum pass_type t = pass_type();
+
+        if (t >= PASS_FIRST) {
+            unsigned int end_passes = t > PASS_OPT ? t - PASS_OPT : 0;
+            nasm_info(1, "assembly %s after 1+%"PRId64"+%u passes",
+                      failure ? "failed" : "completed",
+                      pass_count()-1-end_passes, end_passes);
+        }
+    }
+}
+
 static void assemble_file(const char *fname, struct strlist *depend_list)
 {
     char *line;
@@ -1758,10 +1773,8 @@ static void assemble_file(const char *fname, struct strlist *depend_list)
         reset_warnings();
     }
 
-    if (pass_final()) {
-        /*  -On and -Ov switches */
-        nasm_info(1, "assembly required 1+%"PRId64"+2 passes\n", pass_count()-3);
-    }
+    if (terminate_after_phase || pass_final())
+        print_pass_report(terminate_after_phase);
 
     lfmt->cleanup();
     strlist_free(&warn_list);
@@ -1857,13 +1870,12 @@ static errflags pure_func true_error_type(errflags severity)
 
     type = severity & ERR_MASK;
 
-    /* Promote warning to error? */
     if (type == ERR_WARNING) {
+        /* Promote warning to error? */
         uint8_t state = warning_state[WARN_IDX(severity)];
         if ((state & warn_is_err) == warn_is_err)
             type = ERR_NONFATAL;
     }
-
     return type;
 }
 
@@ -1871,26 +1883,47 @@ static const char no_file_name[] = "nasm"; /* What to print if no file name */
 
 /*
  * For fatal/critical/panic errors, kill this process.
+ *
+ * For FATAL errors doing cleanups, tidying up the list process,
+ * and so in is acceptable.
+ *
+ * For CRITICAL errors, minimize dependencies on memory allocation
+ * and/or having a system valid state.
+ *
+ * For PANIC, if abort_on_panic is set, abort without any other action.
  */
 static_fatal_func die_hard(errflags true_type, errflags severity)
 {
-    fflush(NULL);
+    if (true_type < ERR_PANIC || !abort_on_panic) {
+        if (true_type < ERR_CRITICAL) {
+            /* FATAL shutdown, general cleanup actions are valid */
+            print_pass_report(true);
+            lfmt->cleanup();
+        }
 
-    if (true_type == ERR_PANIC && abort_on_panic)
-        abort();
+        fflush(NULL);
 
-    if (ofile) {
-        fclose(ofile);
-        if (!keep_all)
-            remove(outname);
-        ofile = NULL;
+        if (ofile) {
+            fclose(ofile);
+            if (!keep_all)
+                remove(outname);
+            ofile = NULL;
+        }
+
+        if (severity & ERR_USAGE)
+            usage();
+
+        /* Terminate immediately (exit closes any still open files) */
+        exit(true_type - ERR_FATAL + 1);
     }
 
-    if (severity & ERR_USAGE)
-        usage();
-
-    /* Terminate immediately */
-    exit(true_type - ERR_FATAL + 1);
+    /*
+     * abort() shouldn't ever return, but be paranoid about this,
+     * plus it helps some compilers clue in to the fact that this
+     * function can never, ever return.
+     */
+    while (1)
+        abort();
 }
 
 /*
@@ -1930,8 +1963,8 @@ fatal_func nasm_verror_critical(errflags severity, const char *fmt, va_list args
     errflags true_type = severity & ERR_MASK;
     static bool been_here = false;
 
-    if (unlikely(been_here))
-        abort();                /* Recursive error... just die */
+    while (unlikely(been_here))
+        abort();                /* Recursive critical error... just die */
 
     been_here = true;
 
@@ -1950,6 +1983,7 @@ fatal_func nasm_verror_critical(errflags severity, const char *fmt, va_list args
     fputc('\n', error_file);
 
     die_hard(true_type, severity);
+    unreachable();
 }
 
 /**
@@ -2090,6 +2124,7 @@ static void nasm_issue_error(struct nasm_errtext *et)
     const errflags severity  = et->severity;
     const errflags true_type = et->true_type;
     const struct src_location where = et->where;
+    bool buffer = true_type < ERR_NONFATAL || (severity & ERR_HOLD);
 
     if (severity & ERR_NO_SEVERITY)
         pfx = "";
@@ -2132,10 +2167,13 @@ static void nasm_issue_error(struct nasm_errtext *et)
             here = where.filename ? " here" : " in an unknown location";
         }
 
-        if (warn_list && true_type < ERR_NONFATAL) {
+        if (!warn_list)
+            buffer = false;
+
+        if (buffer) {
             /*
-             * Buffer up warnings until we either get an error
-             * or we are on the code-generation pass.
+             * Buffer up warnings and held errors until we either get
+             * an error or we are on the code-generation pass.
              */
             strlist_printf(warn_list, "%s%s%s%s%s%s%s",
                            file, linestr, errfmt->beforemsg,
@@ -2145,7 +2183,7 @@ static void nasm_issue_error(struct nasm_errtext *et)
              * Actually output an error.  If we have buffered
              * warnings, and this is a non-warning, output them now.
              */
-            if (true_type >= ERR_NONFATAL && warn_list) {
+            if (warn_list) {
                 strlist_write(warn_list, "\n", error_file);
                 strlist_free(&warn_list);
             }
@@ -2181,9 +2219,9 @@ static void nasm_issue_error(struct nasm_errtext *et)
     if (skip_this_pass(severity))
         goto done;
 
-    if (true_type >= ERR_FATAL)
+    if (true_type >= ERR_FATAL) {
         die_hard(true_type, severity);
-    else if (true_type >= ERR_NONFATAL) {
+    } else if (true_type >= ERR_NONFATAL && !buffer) {
         terminate_after_phase = true;
         errflags_never |= ERR_UNDEAD;
     }

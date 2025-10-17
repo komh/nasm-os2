@@ -242,7 +242,7 @@ $wdq  MOVZX	reg#,rm32			[rm:	nw o# 8b /r]				8086,OPT,SX,ND
 $wdq  MOVZXD	reg#,rm32			[rm:	nw o# 8b /r]				8086,OPT,ND
 
 ;# Atomic operations
-$bwdq CMPXCHG	 rm#,reg#			[mr:	hle 0f b0# /r]				PENT,SM,LOCK
+$bwdq CMPXCHG	 rm#,reg#			[mr:	hle o# 0f b0# /r]			PENT,SM,LOCK
       CMPXCHG8B	 mem64				[m:	hle norexw 0f c7 /1]			PENT,LOCK
       CMPXCHG16B mem128				[m:	o64 0f c7 /1]				X86_64,LONG,LOCK
 
@@ -258,23 +258,19 @@ $bwdq XCHG	reg#,rm#			[rm:	hlenl o# 86# /r]			8086,SM,LOCK1
 $bwdq XCHG	rm#,reg#			[mr:	hlenl o# 86# /r]			8086,SM,LOCK,ND
 
 ; 486-only opcode present in some but not all 486 chips
-$bwd  CMPXCHG486 rm#,reg#			[mr:	0f a6# /r]				486,SM,UNDOC,NOLONG,ND,LOCK,OBSOLETE
+$bwd  CMPXCHG486 rm#,reg#			[mr:	o# 0f a6# /r]				486,SM,UNDOC,NOLONG,ND,LOCK,OBSOLETE
 
 ;# Jumps
 ; APX absolute 64-bit jmp
-      JMPABS	imm64				[i:	a64 np rex2 a1 iq		]	APX
-      JMP	imm64|abs			[i:	a64 np rex2 a1 iq		]	APX,ND
-      JMPABS	imm64|abs			[i:	a64 np rex2 a1 iq		]	APX,ND
-; Jump-over emulation of JMPABS on !APX
-      JMPABS	imm64				[i:	a64 ff 25 00 00 00 00 iq	]	NOAPX,LONG,ND
-      JMP	imm64|abs			[i:	a64 ff 25 00 00 00 00 iq	]	NOAPX,LONG,ND
-      JMPABS	imm64|abs			[i:	a64 ff 25 00 00 00 00 iq	]	NOAPX,LONG,ND
+      JMPABS	imm64|near			[i:	a64 np rex2 a1 iq		]	APX
+      JMP	imm64|abs|near			[i:	a64 np rex2 a1 iq		]	APX,ND
+      JMPABS	imm64|abs|near			[i:	a64 np rex2 a1 iq		]	APX,ND
 
 ; Call/jmp near imm/reg/mem are always 64-bit in long mode.
-      JMP	imm8|short			[i:	nw eb rel8]				8086,NOAPX
-      JMP	imm				[i:	jmp8 nw eb rel8]			8086,JMP_RELAX,NOAPX,ND
-$wdq  JMP	imm#|near			[i:	nw o# e9 rel]				8086,BND,(wd:NOLONG,OSIZE)
-$wdq  JMP	rm#|near			[m:	nw o# ff /4]				8086,BND,(wd:NOLONG,OSIZE)
+$br   JMP	short				[i:	os eb rel8]				8086,NOAPX,ND
+$br   JMP	near				[i:	jmp8 os eb rel8]			8086,NOAPX,JMP_RELAX
+$br   JMP	near				[i:	os e9 rel]				8086,BND
+$wdq  JMP	rm#|near			[m:	nw o# ff /4]				8086,BND,OSIZE
 
 $wd   JMP	imm#|far			[i:	o# ea iwd seg]				8086,OSIZE,ND,NOLONG
 ; These are hacks to support the legacy syntax "[d]word seg:offs" to mean "seg:[d]word offs"
@@ -287,37 +283,43 @@ $wd   JMP	imm16:imm#|far			[ji:	o# ea i# iw]				8086,OSIZE,AR1,NOLONG,ND
 ; This is an intentional "programmer friendliness" quirk.
 $wdq  JMP	mem#|far			[m:	o# ff /5]				8086,OSIZE,NWSIZE,(w:NOLONG)
 
-      Jcc	imm8|short			[i:	nw 70+c rel8]				8086,ND,BND,SX,JCC_HINT,NOAPX
-      Jcc	imm				[i:	jcc8 nw 70+c rel8]			8086,BND,SX,JCC_HINT,NOAPX
-$wdq  Jcc	imm#|near			[i:	nw o# 0f 80+c rel]			386,BND,NOAPX,JCC_HINT,(wd:NOLONG,OSIZE)
+$br   Jcc	short				[i:	os 70+c rel8]				8086,ND,BND,JCC_HINT,NOAPX
+$br   Jcc	near				[i:	jcc8 os 70+c rel8]			8086,BND,JCC_HINT,JMP_RELAX,NOAPX
+$br   Jcc	near				[i:	os 0f 80+c rel]				386,BND,NOAPX,JCC_HINT
 ; Jump-over emulation of Jcc on < 386
-      Jcc	imm16|near			[i:	nw 71+c jlen e9 rel16]			8086,ND,NOAPX,NOLONG
+; This could/should be improved to handle osp properly
+      Jcc	imm				[i:	71+c jlen e9 rel]			8086,ND,NOAPX,OSIZE
 
-; The following only have short forms, hence imm8|near|short
-      JCXZ	imm8|near|short			[i:	a16 e3 rel8]				8086,NOLONG
-      JECXZ	imm8|near|short			[i:	a32 e3 rel8]				386,NOAPX
-      JRCXZ	imm8|near|short			[i:	a64 e3 rel8]				X86_64,LONG,NOAPX
-$wdq  JCXZ	imm8|near|short,cx#		[i-:	a# e3 rel8]				8086,ND
+; The following only have short forms, but use the *address* size to encode
+; the size of the counter register.
+$br $wdq  JCX#Z		near|short		[i:	a# os e3 rel8]				8086,NOAPX
+$br $wdq  JCXZ		near|short,cx#		[i:	a# os e3 rel8]				8086,NOAPX,ND
 
-$zwdq LOOP%	imm8|near|short			[i:	a#  nw e2 rel8]				8086,NOAPX,(wdq:ND)
-$zwdq LOOPE%	imm8|near|short			[i:	a#  nw e1 rel8]				8086,NOAPX,(wdq:ND)
-$zwdq LOOPNE%	imm8|near|short			[i:	a#  nw e0 rel8]				8086,NOAPX,(wdq:ND)
-$zwdq LOOPZ%	imm8|near|short			[i:	a#  nw e1 rel8]				8086,NOAPX,ND
-$zwdq LOOPNZ%	imm8|near|short			[i:	a#  nw e0 rel8]				8086,NOAPX,ND
-$wdq  LOOP	imm8|near|short,cx#		[i-:	a#  nw e2 rel8]				8086,NOAPX
-$wdq  LOOPE	imm8|near|short,cx#		[i-:	a#  nw e1 rel8]				8086,NOAPX
-$wdq  LOOPNE	imm8|near|short,cx#		[i-:	a#  nw e0 rel8]				8086,NOAPX
-$wdq  LOOPZ	imm8|near|short,cx#		[i-:	a#  nw e1 rel8]				8086,NOAPX,ND
-$wdq  LOOPNZ	imm8|near|short,cx#		[i-:	a#  nw e0 rel8]				8086,NOAPX,ND
+$br $zwdq LOOP%		near|short		[i:	a# os e2 rel8]				8086,NOAPX,(wdq:ND)
+$br $zwdq LOOPE%	near|short		[i:	a# os e1 rel8]				8086,NOAPX,(wdq:ND)
+$br $zwdq LOOPNE%	near|short		[i:	a# os e0 rel8]				8086,NOAPX,(wdq:ND)
+$br $zwdq LOOPZ%	near|short		[i:	a# os e1 rel8]				8086,NOAPX,ND
+$br $zwdq LOOPNZ%	near|short		[i:	a# os e0 rel8]				8086,NOAPX,ND
+$br $wdq  LOOP		near|short,cx#		[i-:	a# os e2 rel8]				8086,NOAPX
+$br $wdq  LOOPE		near|short,cx#		[i-:	a# os e1 rel8]				8086,NOAPX
+$br $wdq  LOOPNE	near|short,cx#		[i-:	a# os e0 rel8]				8086,NOAPX
+$br $wdq  LOOPZ		near|short,cx#		[i-:	a# os e1 rel8]				8086,NOAPX
+$br $wdq  LOOPNZ	near|short,cx#		[i-:	a# os e0 rel8]				8086,NOAPX
 
 ; JMPE is obsolete, but seems to be used by a fair number of virtual environments?
-$zwdq JMPE	imm##|near			[i:	nw o# 0f b8 rel]			IA64
-; 0f 00 /6 with a prefix has been repurposed in long mode
-$wdq  JMPE	rm#|near			[m:	nw o# np 0f 00 /6]			IA64
-$wd   JMPE	rm#|near			[m:	o#       0f 00 /6]			IA64,ND,NOLONG
+; However, REP-prefixed JMPE opcodes have been repurposed.
+;
+; Per version 2.3 of the Itanium Architecture Software Developer's Manual,
+; which is the closest thing to an offical specification for JMPE,
+; the JMPE instruction is absolute and takes an operand size prefix like
+; a far JMP. As far JMPs are not promoted by default on 64 bits, follow that
+; convention.
+;
+$wdq  JMPE	imm#|near			[i:	norep o# 0f b8 i##]			IA64,OSIZE
+$wdq  JMPE	rm#|near			[m:	norep o# 0f 00 /6]			IA64,OSIZE
 
 ;# Call and return
-$wdq  CALL	imm##|near			[i:	nw o# e8 rel]				8086,BND,NOAPX,(wd:OSIZE,NOLONG)
+$br   CALL	near				[i:	os e8 rel]				8086,BND,NOAPX
 $wdq  CALL	rm#|near			[m:	nw o# ff /2]				8086,BND,(wd:OSIZE,NOLONG)
 
 $wd   CALL	imm#|far			[i:	o# 9a iwd seg]				8086,ND,NOLONG,OSIZE
@@ -331,12 +333,12 @@ $wd   CALL	imm16:imm#|far			[ji:	o# 9a i# iw]				8086,OSIZE,AR1,NOLONG,ND
 ; This is an intentional "programmer friendliness" quirk.
 $wdq  CALL	mem#|far			[m:	o# ff /3]				8086,OSIZE,NWSIZE,(w:NOLONG)
 
-$zwdq RET%	void				[	nw o#  c3]				8086,BND,(d:NOLONG)
-$zwdq RET%	imm16				[i:	nw o#  c2 iw]				8086,BND,(d:NOLONG)
+$zwdq RET%	void				[	nw od# c3]				8086,BND,(d:NOLONG)
+$zwdq RET%	imm16				[i:	nw od# c2 iw]				8086,BND,(d:NOLONG)
 $zwdq RETF%	void				[	   od# cb]				8086
 $zwdq RETF%	imm16				[i:	   od# ca iw]				8086
-$zwdq RETN%	void				[	nw o#  c3]				8086,BND,ND,(d:NOLONG)
-$zwdq RETN%	imm16				[i:	nw o#  c2 iw]				8086,BND,ND,(d:NOLONG)
+$zwdq RETN%	void				[	nw od# c3]				8086,BND,ND,(d:NOLONG)
+$zwdq RETN%	imm16				[i:	nw od# c2 iw]				8086,BND,ND,(d:NOLONG)
 
 ;# Interrupts, system calls, and returns
 INT		imm8				[i:	cd ib,u]				8086
@@ -2463,10 +2465,10 @@ VFNMSUB321SD	xmmreg,xmmreg,xmmrm64		[rvm:	vex.dds.128.66.0f38.w1 bf /r]		FMA
 ;# Intel post-32 nm processor instructions
 ;
 ; Per AVX spec revision 7, document 319433-007
-VCVTPH2PS	ymmreg,xmmrm128			[rm:	vex.256.66.0f38.w0 13 /r]		AVX
-VCVTPH2PS	xmmreg,xmmrm64			[rm:	vex.128.66.0f38.w0 13 /r]		AVX
-VCVTPS2PH	xmmrm128,ymmreg,imm8		[mri:	vex.256.66.0f3a.w0 1d /r ib]		AVX
-VCVTPS2PH	xmmrm64,xmmreg,imm8		[mri:	vex.128.66.0f3a.w0 1d /r ib]		AVX
+VCVTPH2PS	ymmreg,xmmrm128			[rm:	vex.256.66.0f38.w0 13 /r]		F16C
+VCVTPH2PS	xmmreg,xmmrm64			[rm:	vex.128.66.0f38.w0 13 /r]		F16C
+VCVTPS2PH	xmmrm128,ymmreg,imm8		[mri:	vex.256.66.0f3a.w0 1d /r ib]		F16C
+VCVTPS2PH	xmmrm64,xmmreg,imm8		[mri:	vex.128.66.0f3a.w0 1d /r ib]		F16C
 
 ;# Supervisor Mode Access Prevention (SMAP)
 
@@ -2913,17 +2915,9 @@ VPGATHERQQ	ymmreg,ymem64,ymmreg		[rmv:	vm64y vex.dds.256.66.0f38.w1 91 /r]	AVX2
 
 ;# Intel Transactional Synchronization Extensions (TSX)
 XABORT		imm8				[i:	c6 f8 ib]				RTM
-XBEGIN		imm				[i:	nw odf c7 f8 rel]			RTM
-XBEGIN		imm|near			[i:	nw odf c7 f8 rel]			RTM,SX,ND
-XBEGIN		imm16				[i:	   o16 c7 f8 rel]			RTM,NOLONG,SX
-XBEGIN		imm16|near			[i:	   o16 c7 f8 rel]			RTM,NOLONG,SX,ND
-XBEGIN		imm32				[i:	   o32 c7 f8 rel]			RTM,NOLONG,SX
-XBEGIN		imm32|near			[i:	   o32 c7 f8 rel]			RTM,NOLONG,SX,ND
-XBEGIN		imm64				[i:	 o64nw c7 f8 rel]			RTM,LONG,SX
-XBEGIN		imm64|near			[i:	 o64nw c7 f8 rel]			RTM,LONG,SX,ND
+$br XBEGIN	near				[i:	os c7 f8 rel]				RTM
 XEND		void				[	0f 01 d5]				RTM
 XTEST		void				[	0f 01 d6]				HLE,RTM
-
 
 PREFETCHWT1     mem8         [m:                               0f 0d /2 ]  PREFETCHWT1
 
@@ -2983,22 +2977,22 @@ VSM4RNDS4       zmmreg,zmmreg,zmmrm512              [rvm: evex.nds.512.f2.0f38.w
 
 ;# AVX no exception conversions
 ; Must precede AVX-512 versions
-VBCSTNEBF16PS	xmmreg,mem16				[rm:	vex.128.f3.0f38.w0 b1 /r]	AVXNECONVERT,LATEVEX,SW
-VBCSTNEBF16PS	ymmreg,mem16				[rm:	vex.256.f3.0f38.w0 b1 /r]	AVXNECONVERT,LATEVEX,SW
-VBCSTNEBF162PS	xmmreg,mem16				[rm:	vex.128.f3.0f38.w0 b1 /r]	AVXNECONVERT,LATEVEX,SW
-VBCSTNEBF162PS	ymmreg,mem16				[rm:	vex.256.f3.0f38.w0 b1 /r]	AVXNECONVERT,LATEVEX,SW
-VBCSTNESH2PS	xmmreg,mem16				[rm:	vex.128.66.0f38.w0 b1 /r]	AVXNECONVERT,LATEVEX,SW
-VBCSTNESH2PS	ymmreg,mem16				[rm:	vex.256.66.0f38.w0 b1 /r]	AVXNECONVERT,LATEVEX,SW
-VCVTNEEBF162PS	xmmreg,mem128				[rm:	vex.128.f3.0f38.w0 b0 /r]	AVXNECONVERT,LATEVEX,SO
-VCVTNEEBF162PS	ymmreg,mem256				[rm:	vex.256.f3.0f38.w0 b0 /r]	AVXNECONVERT,LATEVEX,SY
-VCVTNEEPH2PS	xmmreg,mem128				[rm:	vex.128.66.0f38.w0 b0 /r]	AVXNECONVERT,LATEVEX,SO
-VCVTNEEPH2PS	ymmreg,mem256				[rm:	vex.256.66.0f38.w0 b0 /r]	AVXNECONVERT,LATEVEX,SY
-VCVTNEOBF162PS	xmmreg,mem128				[rm:	vex.128.f2.0f38.w0 b0 /r]	AVXNECONVERT,LATEVEX,SO
-VCVTNEOBF162PS	ymmreg,mem256				[rm:	vex.256.f2.0f38.w0 b0 /r]	AVXNECONVERT,LATEVEX,SY
-VCVTNEOPH2PS	xmmreg,mem128				[rm:	vex.128.np.0f38.w0 b0 /r]	AVXNECONVERT,LATEVEX,SO
-VCVTNEOPH2PS	ymmreg,mem256				[rm:	vex.256.np.0f38.w0 b0 /r]	AVXNECONVERT,LATEVEX,SY
+VBCSTNEBF16PS	xmmreg,mem16				[rm:	vex.128.f3.0f38.w0 b1 /r]	AVXNECONVERT,SW
+VBCSTNEBF16PS	ymmreg,mem16				[rm:	vex.256.f3.0f38.w0 b1 /r]	AVXNECONVERT,SW
+VBCSTNEBF162PS	xmmreg,mem16				[rm:	vex.128.f3.0f38.w0 b1 /r]	AVXNECONVERT,SW
+VBCSTNEBF162PS	ymmreg,mem16				[rm:	vex.256.f3.0f38.w0 b1 /r]	AVXNECONVERT,SW
+VBCSTNESH2PS	xmmreg,mem16				[rm:	vex.128.66.0f38.w0 b1 /r]	AVXNECONVERT,SW
+VBCSTNESH2PS	ymmreg,mem16				[rm:	vex.256.66.0f38.w0 b1 /r]	AVXNECONVERT,SW
+VCVTNEEBF162PS	xmmreg,mem128				[rm:	vex.128.f3.0f38.w0 b0 /r]	AVXNECONVERT,SO
+VCVTNEEBF162PS	ymmreg,mem256				[rm:	vex.256.f3.0f38.w0 b0 /r]	AVXNECONVERT,SY
+VCVTNEEPH2PS	xmmreg,mem128				[rm:	vex.128.66.0f38.w0 b0 /r]	AVXNECONVERT,SO
+VCVTNEEPH2PS	ymmreg,mem256				[rm:	vex.256.66.0f38.w0 b0 /r]	AVXNECONVERT,SY
+VCVTNEOBF162PS	xmmreg,mem128				[rm:	vex.128.f2.0f38.w0 b0 /r]	AVXNECONVERT,SO
+VCVTNEOBF162PS	ymmreg,mem256				[rm:	vex.256.f2.0f38.w0 b0 /r]	AVXNECONVERT,SY
+VCVTNEOPH2PS	xmmreg,mem128				[rm:	vex.128.np.0f38.w0 b0 /r]	AVXNECONVERT,SO
+VCVTNEOPH2PS	ymmreg,mem256				[rm:	vex.256.np.0f38.w0 b0 /r]	AVXNECONVERT,SY
 VCVTNEPS2BF16	xmmreg,xmmrm128				[rm:	vex.128.f3.0f38.w0 72 /r]	AVXNECONVERT,LATEVEX,SO
-VCVTNEPS2BF16	ymmreg,ymmrm256				[rm:	vex.256.f3.0f38.w0 72 /r]	AVXNECONVERT,LATEVEX,SY
+VCVTNEPS2BF16	xmmreg,ymmrm256				[rm:	vex.256.f3.0f38.w0 72 /r]	AVXNECONVERT,LATEVEX,SY
 
 ;# AVX Vector Neural Network Instructions
 ; Must precede AVX-512 versions
@@ -5398,43 +5392,42 @@ TILERELEASE	void				[	vex.128.np.0f38.w0 49 c0]		AMXTILE,LONG
 TILESTORED	mem,tmmreg			[mr:	vex+.128.f3.0f38.w0 4b /r]		APX,AMXTILE,MIB,SIB,ANYSIZE,AR0,LONG
 TILEZERO	tmmreg				[r:	vex.128.f2.0f38.w0 49 /3r0]		AMXTILE,LONG
 
-TILELOADDRS	tmmreg,mem			[rm:	vex+.128.f2.0f38.w0 4a /r]		APX,AMXTILE,FUTURE,MIB,SIB,ANYSIZE,AR1,LONG
-TILELOADDRST1	tmmreg,mem			[rm:	vex+.128.66.0f38.w0 4a /r]		APX,AMXTILE,FUTURE,MIB,SIB,ANYSIZE,AR1,LONG
+TILELOADDRS	tmmreg,mem			[rm:	vex+.128.f2.0f38.w0 4a /r]		AMXMOVRS,APX,AMXTILE,FUTURE,MIB,SIB,ANYSIZE,AR1,LONG
+TILELOADDRST1	tmmreg,mem			[rm:	vex+.128.66.0f38.w0 4a /r]		AMXMOVRS,APX,AMXTILE,FUTURE,MIB,SIB,ANYSIZE,AR1,LONG
 
-T2RPNTLVWZ0	tmmreg,mem			[rm:	vex.128.np.0f38.w0 6e /r]		FUTURE,SIB
-T2RPNTLVWZ0T1	tmmreg,mem			[rm:	vex.128.np.0f38.w0 6f /r]		FUTURE,SIB
-T2RPNTLVWZ1	tmmreg,mem			[rm:	vex.128.66.0f38.w0 6e /r]		FUTURE,SIB
-T2RPNTLVWZ1T1	tmmreg,mem			[rm:	vex.128.66.0f38.w0 6f /r]		FUTURE,SIB
-T2RPNTLVWZ0RS	tmmreg,mem			[rm:	vex.128.np.map5.w0 f8 /r]		FUTURE,SIB
-T2RPNTLVWZ0RST1	tmmreg,mem			[rm:	vex.128.np.map5.w0 f9 /r]		FUTURE,SIB
-T2RPNTLVWZ1RS	tmmreg,mem			[rm:	vex.128.66.map5.w0 f8 /r]		FUTURE,SIB
-T2RPNTLVWZ1RST1	tmmreg,mem			[rm:	vex.128.66.map5.w0 f9 /r]		FUTURE,SIB
-
-TCONJTCMMIMFP16PS tmmreg,tmmreg,tmmreg		[rmv:	vex.128.np.0f38.w0 6b /r]		FUTURE
-TCONJTFP16	tmmreg,tmmreg			[rm:	vex.128.66.0f38.w0 6b /r]		FUTURE
-TCVTROWD2PS	zmmreg,tmmreg,reg32		[rmv:	evex.512.f3.0f38.w0 4a /r]		FUTURE
-TCVTROWD2PS	zmmreg,tmmreg,imm8		[rmi:	evex.512.f3.0f38.w0 07 /r ib]		FUTURE
-TCVTROWPS2BF16H	zmmreg,tmmreg,reg32		[rmv:	evex.512.f2.0f38.w0 6d /r]		FUTURE
-TCVTROWPS2BF16H	zmmreg,tmmreg,imm8		[rmi:	evex.512.f2.0f38.w0 07 /r ib]		FUTURE
-TCVTROWPS2BF16L	zmmreg,tmmreg,reg32		[rmv:	evex.512.f3.0f38.w0 6d /r]		FUTURE
-TCVTROWPS2BF16L	zmmreg,tmmreg,imm8		[rmi:	evex.512.f3.0f38.w0 77 /r ib]		FUTURE
-TCVTROWPS2PHH	zmmreg,tmmreg,reg32		[rmv:	evex.512.np.0f38.w0 6d /r]		FUTURE
-TCVTROWPS2PHH	zmmreg,tmmreg,imm8		[rmi:	evex.512.np.0f38.w0 07 /r ib]		FUTURE
-TCVTROWPS2PHL	zmmreg,tmmreg,reg32		[rmv:	evex.512.66.0f38.w0 6d /r]		FUTURE
-TCVTROWPS2PHL	zmmreg,tmmreg,imm8		[rmi:	evex.512.f2.0f38.w0 77 /r ib]		FUTURE
-TDPBF8PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.np.map5.w0 fd /r]		FUTURE
-TDPBHF8PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f2.map5.w0 fd /r]		FUTURE
-TDPHBF8PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f3.map5.w0 fd /r]		FUTURE
-TDPHF8PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.66.map5.w0 fd /r]		FUTURE
-TILEMOVROW	zmmreg,tmmreg,imm8		[rmi:	evex.512.66.0f3a.w0 07 /r ib]		FUTURE
-TILEMOVROW	zmmreg,tmmreg,reg32		[rmv:	evex.512.66.0f3a.w0 4a /r]		FUTURE
-TMMULTF32PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.66.0f38.w0 48 /r]		FUTURE
-TTCMMIMFP16PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f2.0f38.w0 6b /r]		FUTURE
-TTCMMRLFP16PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f3.0f38.w0 6b /r]		FUTURE
-TTDPBF16PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f3.0f38.w0 6c /r]		FUTURE
-TTDPFP16PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f2.0f38.w0 6c /r]		FUTURE
-TTMMULTF32PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.np.0f38.w0 48 /r]		FUTURE
-TTRANSPOSED	tmmreg,tmmreg			[rm:	vex.128.f3.0f38.w0 5f /r]		FUTURE
+T2RPNTLVWZ0	tmmreg,mem			[rm:	vex.128.np.0f38.w0 6e /r]		NEVER,SIB,AMXTRANSPOSE
+T2RPNTLVWZ0T1	tmmreg,mem			[rm:	vex.128.np.0f38.w0 6f /r]		NEVER,SIB,AMXTRANSPOSE
+T2RPNTLVWZ1	tmmreg,mem			[rm:	vex.128.66.0f38.w0 6e /r]		NEVER,SIB,AMXTRANSPOSE
+T2RPNTLVWZ1T1	tmmreg,mem			[rm:	vex.128.66.0f38.w0 6f /r]		NEVER,SIB,AMXTRANSPOSE
+T2RPNTLVWZ0RS	tmmreg,mem			[rm:	vex.128.np.map5.w0 f8 /r]		NEVER,SIB,AMXTRANSPOSE
+T2RPNTLVWZ0RST1	tmmreg,mem			[rm:	vex.128.np.map5.w0 f9 /r]		NEVER,SIB,AMXTRANSPOSE
+T2RPNTLVWZ1RS	tmmreg,mem			[rm:	vex.128.66.map5.w0 f8 /r]		NEVER,SIB,AMXTRANSPOSE
+T2RPNTLVWZ1RST1	tmmreg,mem			[rm:	vex.128.66.map5.w0 f9 /r]		NEVER,SIB,AMXTRANSPOSE
+TCONJTCMMIMFP16PS tmmreg,tmmreg,tmmreg		[rmv:	vex.128.np.0f38.w0 6b /r]		NEVER,AMXTRANSPOSE
+TCONJTFP16	tmmreg,tmmreg			[rm:	vex.128.66.0f38.w0 6b /r]		NEVER,AMXTRANSPOSE
+TCVTROWD2PS	zmmreg,tmmreg,reg32		[rmv:	evex.512.f3.0f38.w0 4a /r]		AMXAVX512
+TCVTROWD2PS	zmmreg,tmmreg,imm8		[rmi:	evex.512.f3.0f3a.w0 07 /r ib]		AMXAVX512
+TCVTROWPS2BF16H	zmmreg,tmmreg,reg32		[rmv:	evex.512.f2.0f38.w0 6d /r]		AMXAVX512
+TCVTROWPS2BF16H	zmmreg,tmmreg,imm8		[rmi:	evex.512.f2.0f3a.w0 07 /r ib]		AMXAVX512
+TCVTROWPS2BF16L	zmmreg,tmmreg,reg32		[rmv:	evex.512.f3.0f38.w0 6d /r]		AMXAVX512
+TCVTROWPS2BF16L	zmmreg,tmmreg,imm8		[rmi:	evex.512.f3.0f3a.w0 77 /r ib]		AMXAVX512
+TCVTROWPS2PHH	zmmreg,tmmreg,reg32		[rmv:	evex.512.np.0f38.w0 6d /r]		AMXAVX512
+TCVTROWPS2PHH	zmmreg,tmmreg,imm8		[rmi:	evex.512.np.0f3a.w0 07 /r ib]		AMXAVX512
+TCVTROWPS2PHL	zmmreg,tmmreg,reg32		[rmv:	evex.512.66.0f38.w0 6d /r]		AMXAVX512
+TCVTROWPS2PHL	zmmreg,tmmreg,imm8		[rmi:	evex.512.f2.0f3a.w0 77 /r ib]		AMXAVX512
+TDPBF8PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.np.map5.w0 fd /r]		AMXFP8
+TDPBHF8PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f2.map5.w0 fd /r]		AMXFP8
+TDPHBF8PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f3.map5.w0 fd /r]		AMXFP8
+TDPHF8PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.66.map5.w0 fd /r]		AMXFP8
+TILEMOVROW	zmmreg,tmmreg,imm8		[rmi:	evex.512.66.0f3a.w0 07 /r ib]		AMXAVX512
+TILEMOVROW	zmmreg,tmmreg,reg32		[rmv:	evex.512.66.0f38.w0 4a /r]		AMXAVX512
+TMMULTF32PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.66.0f38.w0 48 /r]		AMXTF32
+TTCMMIMFP16PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f2.0f38.w0 6b /r]		NEVER,AMXTRANSPOSE
+TTCMMRLFP16PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f3.0f38.w0 6b /r]		NEVER,AMXTRANSPOSE
+TTDPBF16PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f3.0f38.w0 6c /r]		NEVER,AMXTRANSPOSE
+TTDPFP16PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.f2.0f38.w0 6c /r]		NEVER,AMXTRANSPOSE
+TTMMULTF32PS	tmmreg,tmmreg,tmmreg		[rmv:	vex.128.np.0f38.w0 48 /r]		NEVER,AMXTRANSPOSE
+TTRANSPOSED	tmmreg,tmmreg			[rm:	vex.128.f3.0f38.w0 5f /r]		NEVER,AMXTRANSPOSE
 
 ;# Intel AVX512-FP16 instructions
 VADDPH		xmmreg|mask|z,xmmreg*,xmmrm128|b16	[rvm:fv:  evex.nds.128.np.map5.w0 58 /r]    AVX512FP16,AVX512VL
@@ -5458,8 +5451,6 @@ VCVTPH2DQ	zmmreg|mask|z,ymmrm256|b16|er		[rm:hv:	  evex.512.66.map5.w0 5B /r]	  
 VCVTPH2PD	xmmreg|mask|z,xmmrm32|b16		[rm:qvm:  evex.128.np.map5.w0 5A /r]	    AVX512FP16,AVX512VL
 VCVTPH2PD	ymmreg|mask|z,xmmrm64|b16		[rm:qvm:  evex.256.np.map5.w0 5A /r]	    AVX512FP16,AVX512VL
 VCVTPH2PD	zmmreg|mask|z,xmmrm128|b16|sae		[rm:qvm:  evex.512.np.map5.w0 5A /r]	    AVX512FP16
-VCVTPH2PS	xmmreg,xmmrm64			[rm:	vex.128.66.0f38.w0 13 /r]	AVX512FC16
-VCVTPH2PS	ymmreg,xmmrm128			[rm:	vex.256.66.0f38.w0 13 /r]	AVX512FC16
 VCVTPH2PS	xmmreg|mask|z,xmmrm64		[rm:hvm:evex.128.66.0f38.w0 13 /r]	AVX512,AVX512VL
 VCVTPH2PS	ymmreg|mask|z,xmmrm128		[rm:hvm:evex.256.66.0f38.w0 13 /r]	AVX512,AVX512VL
 VCVTPH2PS	zmmreg|mask|z,ymmrm256|sae	[rm:hvm:evex.512.66.0f38.w0 13 /r]	AVX512
@@ -5481,8 +5472,6 @@ VCVTPH2UW	zmmreg|mask|z,zmmrm512|b16|er	[rm:fv: evex.512.np.map5.w0 7d /r]	AVX51
 VCVTPH2W	xmmreg|mask|z,xmmrm128|b16	[rm:fv: evex.128.66.map5.w0 7d /r]	AVX512FP16,AVX512VL
 VCVTPH2W	ymmreg|mask|z,ymmrm256|b16	[rm:fv: evex.256.66.map5.w0 7d /r]	AVX512FP16,AVX512VL
 VCVTPH2W	zmmreg|mask|z,zmmrm512|b16|er	[rm:fv: evex.512.66.map5.w0 7d /r]	AVX512FP16
-VCVTPS2PH	xmmrm64,xmmreg,imm8		[mri:	vex.128.66.0f3a.w0 1d /r ib]	AVX512FC16,AVX512VL
-VCVTPS2PH	xmmrm128,ymmreg,imm8		[mri:	vex.256.66.0f3a.w0 1d /r ib]	AVX512FC16,AVX512VL
 VCVTPS2PH	xmmreg|mask|z,xmmreg,imm8	[mri:hvm: evex.128.66.0f3a.w0 1d /r ib]	AVX512,AVX512VL
 VCVTPS2PH	mem64|mask,xmmreg,imm8		[mri:hvm: evex.128.66.0f3a.w0 1d /r ib] AVX512,AVX512VL
 VCVTPS2PH	xmmreg|mask|z,ymmreg,imm8	[mri:hvm: evex.256.66.0f3a.w0 1d /r ib]	AVX512,AVX512VL

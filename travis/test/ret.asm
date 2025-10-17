@@ -1,9 +1,10 @@
-;; All the flavors of RET
-%ifndef ERROR
-	%define ERROR 0
+	;; All the flavors of RET
+
+%ifndef TEST_BITS
+  %define TEST_BITS (16|32|64)
 %endif
 
-%ifdef TEST_BITS_16
+%if (TEST_BITS) & 16
 	bits 16
 
 	ret
@@ -15,14 +16,23 @@
 	retd
 	retnd
 	retfd
-%if ERROR
+	o16 ret
+	o16 retn
+	o16 retf
+	o32 ret
+	o32 retn
+	o32 retf
+%ifdef ERROR
 	retq
 	retnq
 	retfq
+	o64 ret
+	o64 retn
+	o64 retf
 %endif
 %endif
 
-%ifdef TEST_BITS_32
+%if (TEST_BITS) & 32
 	bits 32
 
 	ret
@@ -34,14 +44,23 @@
 	retd
 	retnd
 	retfd
-%if ERROR
+	o16 ret
+	o16 retn
+	o16 retf
+	o32 ret
+	o32 retn
+	o32 retf
+%ifdef ERROR
 	retq
 	retnq
 	retfq
+	o64 ret
+	o64 retn
+	o64 retf
 %endif
 %endif
 
-%ifdef TEST_BITS_64
+%if (TEST_BITS) & 64
 	bits 64
 
 	ret
@@ -50,12 +69,21 @@
 	retw
 	retnw
 	retfw
-%if ERROR
+	o16 ret
+	o16 retn
+	o16 retf
+%ifdef ERROR
 	retd
 	retnd
-%endif
+	o32 ret
+	o32 retn
 %endif
 	retfd
+	o32 retf
 	retq
 	retnq
 	retfq
+	o64 ret
+	o64 retn
+	o64 retf
+%endif

@@ -4,8 +4,6 @@
 # cross-compile on a DOS/Win32/OS2 platform host
 #
 
-.DEFAULT : what
-
 top_srcdir  = .
 srcdir      = .
 VPATH       = $(srcdir)\asm;$(srcdir)\x86;asm;x86;$(srcdir)\macros;macros;$(srcdir)\output;$(srcdir)\lib;$(srcdir)\common;$(srcdir)\stdlib;$(srcdir)\nasmlib;$(srcdir)\disasm;$(srcdir)\zlib
@@ -25,7 +23,6 @@ LDEBUG      =
 LDFLAGS     = op q $(%TARGET_LFLAGS) $(LDEBUG)
 LIBS        =
 STRIP       = wstrip
-RUNMAKE     = $(MAKE) -f Mkfiles\openwcom.mak
 
 PERL		= perl
 PERLFLAGS	= -I$(srcdir)\perllib -I$(srcdir)
@@ -34,6 +31,7 @@ RUNPERL         = $(PERL) $(PERLFLAGS)
 .BEFORE
 	set COPYCMD=/y
 
+# rm is handled internally by WMAKE, so it does work even on non-Unix systems
 RM_F		= -rm -f
 LN_S		= copy
 EMPTY		= %create
@@ -124,7 +122,7 @@ LIBOBJ_NW = &
 	&
 	nasmlib\ver.obj &
 	nasmlib\alloc.obj nasmlib\asprintf.obj &
-	nasmlib\crc32.obj nasmlib\crc64.obj nasmlib\md5c.obj &
+	nasmlib\crc32b.obj nasmlib\crc64.obj nasmlib\md5c.obj &
 	nasmlib\string.obj nasmlib\nctype.obj &
 	nasmlib\file.obj nasmlib\mmap.obj nasmlib\ilog2.obj &
 	nasmlib\realpath.obj nasmlib\path.obj &
@@ -152,26 +150,18 @@ LIBOBJ_DIS = &
 
 # Objects for the local copy of zlib. The variable ZLIB is set to
 # $(ZLIBOBJ) if the internal version of zlib should be used.
-# zlib\crc32.obj is renamed to zlib\z_crc32.obj to avoid conflicts with
-# nasmlib\crc32.obj.
 ZLIBOBJ = &
 	zlib\adler32.obj &
-	zlib\z_crc32.obj &
+	zlib\crc32.obj &
 	zlib\infback.obj &
 	zlib\inffast.obj &
 	zlib\inflate.obj &
 	zlib\inftrees.obj &
 	zlib\zutil.obj
 
-# Special rule to avoid conflicts with nasmlib\crc32.obj because of stupid
-# behavior of implicit rules and VPATH of Open Watcom Make.
-zlib\z_crc32.obj : zlib\crc32.c
-    @set INCLUDE=
-    $(CC) -c $(ALL_CFLAGS) -fo=$^@ $[@
-
 LIBOBJ    = $(LIBOBJ_W) $(LIBOBJ_NW) $(ZLIB)
 ALLOBJ_W  = $(NASM) $(LIBOBJ_W)
-ALLOBJ    = $(PROGOBJ) $(LIBOBJ)
+ALLOBJ    = $(PROGOBJ) $(LIBOBJ) $(LIBOBJ_DIS)
 SUBDIRS  = stdlib nasmlib include config output asm disasm x86 &
 	   common zlib macros misc
 XSUBDIRS = nsis win test doc editors
@@ -414,6 +404,7 @@ clean: .SYMBOLIC
     rm -f stdlib\*.obj stdlib\*.s stdlib\*.i
     rm -f nasmlib\*.obj nasmlib\*.s nasmlib\*.i
     rm -f disasm\*.obj disasm\*.s disasm\*.i
+    rm -f zlib\*.obj zlib\*.s zlib\*.i
     rm -f config.h config.log config.status
     rm -f nasm$(X) ndisasm$(X) $(NASMLIB) $(NDISLIB)
 

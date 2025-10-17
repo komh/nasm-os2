@@ -11,6 +11,30 @@ evolving code simpler.
 It is the production version of NASM since 2025.
 
 
+\S{cl-3.02} Version 3.02
+
+\b Fix build problems on C23 compilers using a pre-C23 version of
+   \c{<stdbool.h>} which defines \c{bool} as a macro in violation of the
+   C23 specification.
+
+\b The immediate form of the \c{JMPE} instruction (opcode \c{0F B8})
+   has been changed to an absolute address, as in
+   the Itanium Architecture Software Developer's Manual, version 2.3,
+   Volume 4, page 4:249. Hopefully this won't break whatever virtual
+   environments use \c{JMPE}, but it is the closest thing there is to
+   an official specification for this opcode.
+
+\> Being an \e{absolute} address, treat it equivalent to a \c{FAR}
+   jump and do not default to 64 bits in 64-bit mode.
+
+\> That \c{JMPE} has apparently been wrong all these years is probably
+   as good of a hint as any how much it has been actually used, but it
+   \e{does} have the possibility of breaking virtual environments. In
+   that case, please file a bug report to \W{https://bugs.nasm.us/}
+   with details about the virtual environment, and we will figure out
+   a suitable solution.
+
+
 \S{cl-3.01} Version 3.01
 
 \b A new \c{obj2} version of the \c{obj} output format, intended for
@@ -43,9 +67,25 @@ It is the production version of NASM since 2025.
    documented directives (bracketed forms only) and allow both
    \c{postfix} and \c{suffix} in all cases.
 
-   See \k{opt-pfix} and \k{mangling}.
+\> See \k{opt-pfix} and \k{mangling}.
 
-\b Define additional permissive patterns and fix some opcode bugs.
+\b Define additional permissive patterns and fix several opcode bugs.
+
+\b Fix parsing of two-operand forms of x87 instructions.
+
+\b Fix bogus "absolute address can not be RIP-relative" warning.
+
+\b Hopefully fix building with OpenWatcom.
+
+\b Generate a warning, promoted to error by default, on the use of
+   \c{o64} prefixes in 16- or 32-bit mode. If demoted to a warning or
+   suppressed the prefix is ignored, but likely will trigger
+   subsequent, harder to debug, error messages.
+
+\b More consistent handling of jump and call instructions with
+   specified operand sizes.
+
+\b Fix an operand size handling bug in the \c{CMPXCHG} instruction.
 
 
 \S{cl-3.00} Version 3.00

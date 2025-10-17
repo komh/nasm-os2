@@ -634,6 +634,82 @@ static void out_reladdr(struct out_data *data, const struct operand *opx,
     out(data);
 }
 
+/* Issue an error message on match failure */
+static void no_match_error(enum match_result m, const insn *ins)
+{
+    /* No match */
+    switch (m) {
+    case MERR_INVALOP:
+        nasm_holderr("invalid combination of opcode and operands");
+        break;
+    case MERR_OPSIZEINVAL:
+        nasm_holderr("invalid operand sizes for instruction");
+        break;
+    case MERR_OPSIZEMISSING:
+        nasm_holderr("operation size not specified");
+        break;
+    case MERR_OPSIZEMISMATCH:
+        nasm_holderr("mismatch in operand sizes");
+        break;
+    case MERR_BRNOTHERE:
+        nasm_holderr("broadcast not permitted on this operand");
+        break;
+    case MERR_BRNUMMISMATCH:
+        nasm_holderr("mismatch in the number of broadcasting elements");
+        break;
+    case MERR_MASKNOTHERE:
+        nasm_holderr("mask not permitted on this operand");
+        break;
+    case MERR_DECONOTHERE:
+        nasm_holderr("unsupported mode decorator for instruction");
+        break;
+    case MERR_BADCPU:
+        nasm_holderr("no instruction for this cpu level");
+        break;
+    case MERR_BADMODE:
+        nasm_holderr("instruction not supported in %d-bit mode", ins->bits);
+        break;
+    case MERR_ENCMISMATCH:
+        if (!ins->prefixes[PPS_REX]) {
+            nasm_holderr("instruction not encodable without explicit prefix");
+        } else {
+            nasm_holderr("instruction not encodable with %s prefix",
+                          prefix_name(ins->prefixes[PPS_REX]));
+        }
+        break;
+    case MERR_BADBND:
+    case MERR_BADREPNE:
+        nasm_holderr("%s prefix is not allowed",
+                      prefix_name(ins->prefixes[PPS_REP]));
+        break;
+    case MERR_REGSETSIZE:
+        nasm_holderr("invalid register set size");
+        break;
+    case MERR_REGSET:
+        nasm_holderr("register set not valid for operand");
+        break;
+    case MERR_WRONGIMM:
+        nasm_holderr("operand/operator invalid for this instruction");
+        break;
+    case MERR_BADZU:
+        nasm_holderr("{zu} not applicable to this instruction");
+        break;
+    case MERR_MEMZU:
+        nasm_holderr("{zu} invalid for non-register destination");
+        break;
+    case MERR_BADNF:
+        nasm_holderr("{nf} not available for this instruction");
+        break;
+    case MERR_REQNF:
+        nasm_holderr("{nf} required for this instruction");
+        break;
+    default:
+        if (m < MOK_GOOD)
+            nasm_holderr("invalid use of instruction");
+        break;
+    }
+}
+
 /* This is a real hack. The jcc8 or jmp8 byte code must come first. */
 static enum match_result jmp_match(const struct itemplate *temp, const insn *ins)
 {
@@ -816,7 +892,6 @@ static int64_t assemble(insn *instruction)
     const struct itemplate *temp;
     enum match_result m;
     const int64_t start = instruction->loc.offset;
-    const int bits = instruction->bits;
 
     if (instruction->opcode == I_none)
         return 0;
@@ -999,75 +1074,7 @@ static int64_t assemble(insn *instruction)
 
             nasm_assert(data.loc.offset - start == data.inslen);
         } else {
-            /* No match */
-            switch (m) {
-            case MERR_INVALOP:
-            default:
-                nasm_nonfatal("invalid combination of opcode and operands");
-                break;
-            case MERR_OPSIZEINVAL:
-                nasm_nonfatal("invalid operand sizes for instruction");
-                break;
-            case MERR_OPSIZEMISSING:
-                nasm_nonfatal("operation size not specified");
-                break;
-            case MERR_OPSIZEMISMATCH:
-                nasm_nonfatal("mismatch in operand sizes");
-                break;
-            case MERR_BRNOTHERE:
-                nasm_nonfatal("broadcast not permitted on this operand");
-                break;
-            case MERR_BRNUMMISMATCH:
-                nasm_nonfatal("mismatch in the number of broadcasting elements");
-                break;
-            case MERR_MASKNOTHERE:
-                nasm_nonfatal("mask not permitted on this operand");
-                break;
-            case MERR_DECONOTHERE:
-                nasm_nonfatal("unsupported mode decorator for instruction");
-                break;
-            case MERR_BADCPU:
-                nasm_nonfatal("no instruction for this cpu level");
-                break;
-            case MERR_BADMODE:
-                nasm_nonfatal("instruction not supported in %d-bit mode", bits);
-                break;
-            case MERR_ENCMISMATCH:
-                if (!instruction->prefixes[PPS_REX]) {
-                    nasm_nonfatal("instruction not encodable without explicit prefix");
-                } else {
-                    nasm_nonfatal("instruction not encodable with %s prefix",
-                                  prefix_name(instruction->prefixes[PPS_REX]));
-                }
-                break;
-            case MERR_BADBND:
-            case MERR_BADREPNE:
-                nasm_nonfatal("%s prefix is not allowed",
-                              prefix_name(instruction->prefixes[PPS_REP]));
-                break;
-            case MERR_REGSETSIZE:
-                nasm_nonfatal("invalid register set size");
-                break;
-            case MERR_REGSET:
-                nasm_nonfatal("register set not valid for operand");
-                break;
-            case MERR_WRONGIMM:
-                nasm_nonfatal("operand/operator invalid for this instruction");
-                break;
-            case MERR_BADZU:
-                nasm_nonfatal("{zu} not applicable to this instruction");
-                break;
-            case MERR_MEMZU:
-                nasm_nonfatal("{zu} invalid for non-register destination");
-                break;
-            case MERR_BADNF:
-                nasm_nonfatal("{nf} not available for this instruction");
-                break;
-            case MERR_REQNF:
-                nasm_nonfatal("{nf} required for this instruction");
-                break;
-            }
-
+            no_match_error(m, instruction);
             instruction->times = 1; /* Avoid repeated error messages */
         }
     }
@@ -1285,8 +1292,10 @@ static int64_t insn_size(insn *instruction)
         insn_early_setup(instruction);
 
         m = find_match(&temp, instruction);
-        if (m < MOK_GOOD)
+        if (m < MOK_GOOD) {
+            no_match_error(m, instruction);
             return -1;              /* No match */
+        }
 
         isize = calcsize(instruction, temp);
         debug_set_type(instruction);
@@ -1400,7 +1409,7 @@ static int64_t calcsize(insn *ins, const struct itemplate * const temp)
     ins->itemp   = temp;        /* Instruction template */
     eat = EA_SCALAR;            /* Expect a scalar EA */
 
-    /* Default operand size */
+    /* Default operand size (prefixes are handled in the byte code) */
     ins->op_size = bits != 16 ? 32 : 16;
 
     nasm_zero(need_pfx);
@@ -3042,7 +3051,7 @@ static enum match_result matches(const struct itemplate * const itemp,
 
     /* "Default" operand size (from mode and prefixes only) */
     op_size = ins->op_size;
-    if (itemp_has(itemp, IF_NWSIZE) && op_size == 32) {
+    if (bits == 64 && itemp_has(itemp, IF_NWSIZE) && op_size == 32) {
         /* If this is an nw instruction, default to 64 bits in 64-bit mode */
         op_size = bits;
     }
@@ -3082,18 +3091,23 @@ static enum match_result matches(const struct itemplate * const itemp,
 
         /* Handle implied SHORT or NEAR */
         if (unlikely(ttype & (NEAR|SHORT))) {
+            /* Treat BYTE as an alias for SHORT, ignoring size */
+            if (isize[i] == BITS8) {
+                itype[i] |= SHORT;
+                isize[i] = 0;
+            }
+            /* An explicit SHORT or BITS8 cancels NEAR; are synonyms */
+            if (itype[i] & SHORT) {
+                itype[i] &= ~NEAR;
+            }
+            /* NEAR is implicit unless otherwise specified */
+           if (!(itype[i] & (FAR|SHORT))) {
+                itype[i] |= ttype & NEAR;
+            }
             if ((ttype & (NEAR|SHORT)) == (NEAR|SHORT)) {
-                /* Only a short form exists; allow both NEAR and SHORT */
+                /* Only a short form exists; this is specially coded */
                 if (!(itype[i] & (FAR|ABS)))
                     itype[i] |= NEAR|SHORT;
-            } else if ((itype[i] & SHORT) || isize[i] == BITS8) {
-                /* An explicit SHORT or BITS8 cancel NEAR; are synonyms */
-                itype[i] &= ~NEAR;
-                if (!isize[i])
-                    isize[i] = BITS8;
-            } else if (!(itype[i] & (FAR|ABS|SHORT))) {
-                /* NEAR is implicit unless otherwise specified */
-                itype[i] |= ttype & NEAR;
             }
         }
 
@@ -3102,24 +3116,10 @@ static enum match_result matches(const struct itemplate * const itemp,
             /*
              * If this is an *explicitly* sized immediate,
              * allow it to match an extending pattern.
+             *
+             * NOTE: Open Watcom does not support 64-bit constants
+             * in switch statements; do not change this to a switch.
              */
-#ifndef __WATCOMC__
-            switch (isize[i]) {
-            case BITS8:
-                if (ttype & BYTEEXTMASK) {
-                    isize[i]  = tsize[i];
-                    itype[i] |= BYTEEXTMASK;
-                }
-                break;
-            case BITS32:
-                if (ttype & DWORDEXTMASK)
-                    isize[i]  = tsize[i];
-                break;
-            default:
-                break;
-            }
-#else
-            /* Open Watcom does not support 64-bit constants at *case*. */
             if (isize[i] == BITS8) {
                 if (ttype & BYTEEXTMASK) {
                     isize[i]  = tsize[i];
@@ -3129,7 +3129,6 @@ static enum match_result matches(const struct itemplate * const itemp,
                 if (ttype & DWORDEXTMASK)
                     isize[i]  = tsize[i];
             }
-#endif
 
             /*
              * MOST instructions which take an sdword64 are the only form;
@@ -3462,8 +3461,7 @@ static int process_ea(operand *input, int rfield, opflags_t rflags,
                         input->type |= IP_REL;
                 }
                 if ((input->type & IP_REL) == IP_REL) {
-                    if (input->segment == NO_SEG ||
-                        (input->opflags & OPFLAG_RELATIVE)) {
+                    if (!pass_first() && absolute_op(input)) {
                         nasm_warn(WARN_EA_ABSOLUTE,
                                   "absolute address can not be RIP-relative");
                         input->type &= ~IP_REL;
